@@ -27,7 +27,8 @@ def snapshots():
 
 @snapshots.command('list')
 @click.option('--project', default=None, help="Snapshots of a Project")
-def list_snapshots(project):
+@click.option('--all', 'list_all', deafult=False, is_flag=True)
+def list_snapshots(project, list_all):
     """List all snapshots"""
     
     instances = filter_instances(project)
@@ -43,6 +44,9 @@ def list_snapshots(project):
                     s.progress,
                     str(s.start_time)
                 )))
+
+                if s.state == 'completed' and not list_all:
+                    break
     return
 
 
