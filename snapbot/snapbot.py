@@ -1,4 +1,5 @@
 import boto3
+import botocore
 import click
 
 session = boto3.Session(profile_name='snapshotty')
@@ -16,13 +17,85 @@ def filter_instances(project):
     return instances
 
 @click.group()
+def cli():
+    """Commands for commandline"""
+
+
+@cli.group()
+def snapshots():
+    """Commands for snapshots"""
+
+@snapshots.command('list')
+@click.option('--project', default=None, help="Snapshots of a Project")
+def list_snapshots(project):
+    """List all snapshots"""
+    
+    instances = filter_instances(project)
+
+    for i in instances:
+        for v in i.volumes.all():
+            for s in v.snapshots.all():
+                print(", ".join((
+                    s.id,
+                    v.id,
+                    i.id,
+                    s.state,
+                    s.progress,
+                    str(s.start_time)
+                )))
+    return
+
+
+@cli.group('volumes')
+def volumes():
+    """Commands for volumes"""
+
+@volumes.command('list')
+@click.option('--project', default=None, help="Volumes of a Project")
+def list_volumes(project):    
+    """Lists all volumes"""
+    
+    instances = filter_instances(project)
+    
+    for i in instances:
+        for v in i.volumes.all():
+            print(", ". join((
+                v.id,
+                i.id,
+                v.state,
+                str(v.size) + "GiB"
+            )))
+    
+    return
+
+
+@cli.group('instances')
 def instances():
     """Commands for instances"""
+
+@instances.command('snapshot')
+@click.option('--project', default=None, help="Instances of a Project")
+def create_snapshots(project):
+    """Takes a snapshot of all instances or ones under a project"""
+    instances = filter_instances(project)
+
+    for i in instances:
+        print(f"Stopping {i.id}...")
+        i.stop()
+        i.wait_until_stopped()
+        for v in i.volumes.all():
+            print(f"Creating snapshot of {v.id}...")
+            v.create_snapshot(Description="Snapshot created by snabot.py")
+        print(f"Restarting {i.id}...")  
+        i.start()
+        i.wait_until_running()
+    return
+
 
 @instances.command('list')
 @click.option('--project', default=None, help="Instances of a Project")
 def list_instances(project):    
-    """Lists all instances id, type, state, public dns name, launch time, and the project tag if aviable"""
+    """Lists all instances id, type, state, public dns name, launch time, and the project tag if avaliable"""
     instances = filter_instances(project)
 
     for i in instances:
@@ -45,7 +118,13 @@ def stop_instance(project):
 
     for i in instances:
         print(f"Stopping instance: {i.id}....")
-        i.stop()
+        try:
+            i.stop()
+        except botocore.exceptions.ClientError as e:
+            print(f"Could not stop {i.id}: {e}")
+            continue
+    
+    return
 
 @instances.command('start')
 @click.option('--project', default=None, help="Instances of a Project")
@@ -55,7 +134,13 @@ def start_instance(project):
 
     for i in instances:
         print(f"Starting instance: {i.id}....")
-        i.start()
+        try:
+            i.start()
+        except botocore.exceptions.ClientError as e:
+            print(f"Could not start {i.id}: {e}")
+            continue
+    
+    return
 
 if __name__ == '__main__':
-    instances()
+    cli()
